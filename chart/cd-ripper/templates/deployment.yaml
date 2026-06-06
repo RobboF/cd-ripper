@@ -29,6 +29,8 @@ spec:
           env:
             - name: CD_DEVICE
               value: {{ .Values.device | quote }}
+            - name: NTFY_URL
+              value: {{ .Values.ntfyUrl | quote }}
           volumeMounts:
             - name: device
               mountPath: {{ .Values.device }}

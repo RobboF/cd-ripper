@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import urllib.request
 import tempfile
 import threading
 import time
@@ -136,6 +137,24 @@ def _has_media(device_node: str) -> bool:
         return False
 
 
+_NTFY_URL = os.environ.get("NTFY_URL", "http://ntfy.ntfy.svc.cluster.local/ripper")
+
+
+def notify(title: str, message: str) -> None:
+    if not _NTFY_URL:
+        return
+    try:
+        req = urllib.request.Request(
+            _NTFY_URL,
+            data=message.encode(),
+            headers={"Title": title},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as exc:
+        print(f"[!] ntfy notification failed: {exc}")
+
+
 def eject_cd(device_node: str) -> None:
     try:
         subprocess.run(["eject", device_node], check=True)
@@ -155,6 +174,10 @@ def on_cd_inserted(device_node: str) -> None:
         return
     print(f"[*] {metadata['artist']} — {metadata['album']} ({len(metadata['tracks'])} tracks)")
     rip_cd(device_node, metadata)
+    notify(
+        title="Rip complete",
+        message=f"{metadata['artist']} — {metadata['album']} ({len(metadata['tracks'])} tracks)",
+    )
     eject_cd(device_node)
 
 

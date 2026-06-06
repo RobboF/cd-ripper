@@ -21,6 +21,9 @@ nfs:
   server: ""
   path: ""
 
+# ntfy notification URL. Leave empty to disable notifications.
+ntfyUrl: ""
+
 # Pin to the node that has the CD drive.
 nodeSelector: {}
 tolerations: []
