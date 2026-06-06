@@ -155,13 +155,18 @@ def notify(title: str, message: str) -> None:
         print(f"[!] ntfy notification failed: {exc}")
 
 
+_CDROMEJECT = 0x5309  # <linux/cdrom.h>
+
+
 def eject_cd(device_node: str) -> None:
     try:
-        subprocess.run(["eject", device_node], check=True)
+        fd = os.open(device_node, os.O_RDONLY | os.O_NONBLOCK)
+        try:
+            fcntl.ioctl(fd, _CDROMEJECT)
+        finally:
+            os.close(fd)
         print(f"[+] Ejected {device_node}")
-    except FileNotFoundError:
-        print("[!] 'eject' not found — install it to enable auto-eject")
-    except subprocess.CalledProcessError as exc:
+    except OSError as exc:
         print(f"[!] Eject failed: {exc}")
 
 

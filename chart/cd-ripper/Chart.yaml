@@ -2,5 +2,5 @@ apiVersion: v2
 name: cd-ripper
 description: Automatically rip CDs to FLAC with MusicBrainz metadata
 type: application
-version: 0.1.5
+version: 0.1.6
 appVersion: "latest"
