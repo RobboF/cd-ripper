@@ -9,6 +9,9 @@ device: /dev/sr0
 # GID of the cdrom group on the host node (Fedora: 11, Debian/Ubuntu: 24).
 cdromGID: 11
 
+# Run the container as root with a privileged security context.
+privileged: false
+
 # Host path where ripped FLAC files are written.
 outputPath: /home/rob/Music
 

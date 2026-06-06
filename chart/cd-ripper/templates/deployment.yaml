@@ -15,14 +15,20 @@ spec:
         {{- include "cd-ripper.selectorLabels" . | nindent 8 }}
     spec:
       securityContext:
+        {{- if not .Values.privileged }}
         runAsUser: 1000
         runAsGroup: 1000
+        {{- end }}
         supplementalGroups:
           - {{ .Values.cdromGID }}
       containers:
         - name: cd-ripper
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.privileged }}
+          securityContext:
+            privileged: true
+          {{- end }}
           volumeMounts:
             - name: device
               mountPath: {{ .Values.device }}
