@@ -16,12 +16,8 @@ spec:
     spec:
       hostNetwork: true
       securityContext:
-        {{- if not .Values.privileged }}
-        runAsUser: 1000
-        runAsGroup: 1000
-        {{- end }}
-        supplementalGroups:
-          - {{ .Values.cdromGID }}
+        runAsUser: 0
+        runAsGroup: 0
       containers:
         - name: cd-ripper
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -40,7 +36,7 @@ spec:
               mountPath: /run/udev
               readOnly: true
             - name: output
-              mountPath: /home/ripper/Music
+              mountPath: /root/Music
       volumes:
         - name: device
           hostPath:

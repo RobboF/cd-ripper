@@ -167,6 +167,7 @@ def _udev_monitor_loop(ripping: threading.Event, device_override: str) -> None:
     context = pyudev.Context()
     monitor = pyudev.Monitor.from_netlink(context)
     monitor.filter_by(subsystem="block")
+    print("[udev] Listening for block device events.")
 
     for device in iter(monitor.poll, None):
         if device.action not in ("add", "change"):
@@ -180,14 +181,20 @@ def _udev_monitor_loop(ripping: threading.Event, device_override: str) -> None:
         if dev_type != "cd" and is_cdrom != "1" and "sr" not in node:
             continue
 
-        # ID_CDROM_MEDIA is not set by TalosOS udev when the block-layer probe
-        # fails (audio CDs return "Illegal mode for this track" on READ(10)).
-        # Fall back to the ioctl to confirm a disc is actually present.
         target = node or device_override
-        if has_media != "1" and not _has_media(target):
-            continue
+        if has_media == "1":
+            print(f"[udev] CD event on {target} (ID_CDROM_MEDIA=1).")
+        else:
+            # ID_CDROM_MEDIA is not set by TalosOS udev when the block-layer probe
+            # fails (audio CDs return "Illegal mode for this track" on READ(10)).
+            # Confirm via ioctl before proceeding.
+            if not _has_media(target):
+                print(f"[udev] CD event on {target} but ioctl reports no media — skipping.")
+                continue
+            print(f"[udev] CD event on {target} (ID_CDROM_MEDIA not set, confirmed via ioctl).")
 
         if ripping.is_set():
+            print("[udev] Rip already in progress — ignoring event.")
             continue
         ripping.set()
         try:
@@ -199,18 +206,27 @@ def _udev_monitor_loop(ripping: threading.Event, device_override: str) -> None:
 def _poll_loop(ripping: threading.Event, device_node: str) -> None:
     """Fallback: poll the drive directly so events missed by udev are still caught."""
     disc_was_present = False
+    udev_triggered = False
+    print(f"[poll] Polling {device_node} every {POLL_INTERVAL}s as fallback.")
     while True:
         time.sleep(POLL_INTERVAL)
         present = _has_media(device_node)
         if present and not disc_was_present:
-            # Rising edge: disc just appeared (or was there at startup).
-            if not ripping.is_set():
+            if ripping.is_set():
+                # udev beat us to it
+                udev_triggered = True
+            else:
+                print(f"[poll] Disc detected on {device_node} — udev did not fire, using poll fallback.")
+                udev_triggered = False
                 ripping.set()
                 try:
                     on_cd_inserted(device_node)
                 finally:
                     ripping.clear()
+        elif not present and disc_was_present and not udev_triggered:
+            print(f"[poll] Disc removed from {device_node}.")
         disc_was_present = present
+        udev_triggered = False
 
 
 def main() -> None:
