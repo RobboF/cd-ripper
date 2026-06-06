@@ -84,6 +84,14 @@ def rip_cd(device_node: str, metadata: dict) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[*] Output: {out_dir}")
 
+    flac_paths = {
+        track_num: out_dir / f"{str(track_num).zfill(2)}-{_safe(track_title)}.flac"
+        for track_num, track_title in metadata["tracks"]
+    }
+    if all(p.exists() for p in flac_paths.values()):
+        print(f"[*] All {len(flac_paths)} tracks already exist — skipping rip.")
+        return
+
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
 
@@ -94,6 +102,7 @@ def rip_cd(device_node: str, metadata: dict) -> None:
             check=True,
         )
 
+        written = 0
         for track_num, track_title in metadata["tracks"]:
             num = str(track_num).zfill(2)
             wav = tmp_path / f"track{num}.cdda.wav"
@@ -101,7 +110,11 @@ def rip_cd(device_node: str, metadata: dict) -> None:
                 print(f"[!] {wav.name} not found — skipping track {num}")
                 continue
 
-            flac_out = out_dir / f"{num}-{_safe(track_title)}.flac"
+            flac_out = flac_paths[track_num]
+            if flac_out.exists():
+                print(f"[*] {num}: already exists — skipping")
+                continue
+
             print(f"[*] Encoding {num}: {track_title}")
             subprocess.run(
                 [
@@ -115,8 +128,9 @@ def rip_cd(device_node: str, metadata: dict) -> None:
                 ],
                 check=True,
             )
+            written += 1
 
-    print(f"[+] Done — {len(metadata['tracks'])} tracks written to {out_dir}")
+    print(f"[+] Done — {written} tracks written to {out_dir}")
 
 
 _CDROM_DRIVE_STATUS = 0x5326  # <linux/cdrom.h>
