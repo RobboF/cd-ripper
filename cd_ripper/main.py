@@ -11,10 +11,14 @@ Usage:
     poetry run python -m cd_ripper.main
 """
 
+import fcntl
+import os
 import re
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 import discid
@@ -114,6 +118,24 @@ def rip_cd(device_node: str, metadata: dict) -> None:
     print(f"[+] Done — {len(metadata['tracks'])} tracks written to {out_dir}")
 
 
+_CDROM_DRIVE_STATUS = 0x5326  # <linux/cdrom.h>
+_CDS_DISC_OK = 4
+
+
+def _has_media(device_node: str) -> bool:
+    """Return True if a disc is present (uses ioctl, never triggers block-layer reads)."""
+    try:
+        # O_NONBLOCK prevents the kernel from probing the disc on open, which
+        # causes READ(10) failures on audio CDs and floods dmesg with I/O errors.
+        fd = os.open(device_node, os.O_RDONLY | os.O_NONBLOCK)
+        try:
+            return fcntl.ioctl(fd, _CDROM_DRIVE_STATUS, 0) == _CDS_DISC_OK
+        finally:
+            os.close(fd)
+    except OSError:
+        return False
+
+
 def eject_cd(device_node: str) -> None:
     try:
         subprocess.run(["eject", device_node], check=True)
@@ -136,34 +158,80 @@ def on_cd_inserted(device_node: str) -> None:
     eject_cd(device_node)
 
 
-def main() -> None:
-    check_tools()
+POLL_DEVICE = os.environ.get("CD_DEVICE", "/dev/sr0")
+POLL_INTERVAL = 5  # seconds
 
+
+def _udev_monitor_loop(ripping: threading.Event, device_override: str) -> None:
+    """Forward kernel block uevents to on_cd_inserted (requires hostNetwork: true)."""
     context = pyudev.Context()
     monitor = pyudev.Monitor.from_netlink(context)
     monitor.filter_by(subsystem="block")
 
-    print("Watching for CD/DVD insertion. Press Ctrl+C to stop.")
+    for device in iter(monitor.poll, None):
+        if device.action not in ("add", "change"):
+            continue
+
+        dev_type  = device.get("ID_TYPE", "")
+        is_cdrom  = device.get("ID_CDROM", "")
+        has_media = device.get("ID_CDROM_MEDIA", "")
+        node      = device.device_node or ""
+
+        if dev_type != "cd" and is_cdrom != "1" and "sr" not in node:
+            continue
+
+        # ID_CDROM_MEDIA is not set by TalosOS udev when the block-layer probe
+        # fails (audio CDs return "Illegal mode for this track" on READ(10)).
+        # Fall back to the ioctl to confirm a disc is actually present.
+        target = node or device_override
+        if has_media != "1" and not _has_media(target):
+            continue
+
+        if ripping.is_set():
+            continue
+        ripping.set()
+        try:
+            on_cd_inserted(target)
+        finally:
+            ripping.clear()
+
+
+def _poll_loop(ripping: threading.Event, device_node: str) -> None:
+    """Fallback: poll the drive directly so events missed by udev are still caught."""
+    disc_was_present = False
+    while True:
+        time.sleep(POLL_INTERVAL)
+        present = _has_media(device_node)
+        if present and not disc_was_present:
+            # Rising edge: disc just appeared (or was there at startup).
+            if not ripping.is_set():
+                ripping.set()
+                try:
+                    on_cd_inserted(device_node)
+                finally:
+                    ripping.clear()
+        disc_was_present = present
+
+
+def main() -> None:
+    check_tools()
+
+    ripping = threading.Event()
+
+    print(f"Watching for CD/DVD insertion on {POLL_DEVICE}. Press Ctrl+C to stop.")
+
+    poll_thread = threading.Thread(
+        target=_poll_loop, args=(ripping, POLL_DEVICE), daemon=True
+    )
+    poll_thread.start()
+
+    udev_thread = threading.Thread(
+        target=_udev_monitor_loop, args=(ripping, POLL_DEVICE), daemon=True
+    )
+    udev_thread.start()
 
     try:
-        for device in iter(monitor.poll, None):
-            # "add"    = USB drive plugged in with disc already inside
-            # "change" = disc inserted into an already-connected drive
-            if device.action not in ("add", "change"):
-                continue
-
-            dev_type  = device.get("ID_TYPE", "")
-            is_cdrom  = device.get("ID_CDROM", "")
-            has_media = device.get("ID_CDROM_MEDIA", "")
-            node      = device.device_node or ""
-
-            if dev_type != "cd" and is_cdrom != "1" and "sr" not in node:
-                continue
-
-            if has_media != "1":
-                continue
-
-            on_cd_inserted(node)
+        udev_thread.join()
     except KeyboardInterrupt:
         print("\nStopped.")
 

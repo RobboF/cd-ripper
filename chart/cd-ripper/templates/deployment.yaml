@@ -14,6 +14,7 @@ spec:
       labels:
         {{- include "cd-ripper.selectorLabels" . | nindent 8 }}
     spec:
+      hostNetwork: true
       securityContext:
         {{- if not .Values.privileged }}
         runAsUser: 1000
@@ -29,6 +30,9 @@ spec:
           securityContext:
             privileged: true
           {{- end }}
+          env:
+            - name: CD_DEVICE
+              value: {{ .Values.device | quote }}
           volumeMounts:
             - name: device
               mountPath: {{ .Values.device }}
