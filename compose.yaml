@@ -1,0 +1,10 @@
+services:
+  cd-ripper:
+    build: .
+    network_mode: host
+    devices:
+      - /dev/sr0:/dev/sr0
+    volumes:
+      - /run/udev:/run/udev:ro
+      - ${HOME}/Music:/home/ripper/Music
+    restart: unless-stopped

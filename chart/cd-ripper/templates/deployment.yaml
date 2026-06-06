@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cd-ripper.fullname" . }}
+  labels:
+    {{- include "cd-ripper.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cd-ripper.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cd-ripper.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        supplementalGroups:
+          - {{ .Values.cdromGID }}
+      containers:
+        - name: cd-ripper
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          volumeMounts:
+            - name: device
+              mountPath: {{ .Values.device }}
+            - name: udev
+              mountPath: /run/udev
+              readOnly: true
+            - name: output
+              mountPath: /home/ripper/Music
+      volumes:
+        - name: device
+          hostPath:
+            path: {{ .Values.device }}
+            type: BlockDevice
+        - name: udev
+          hostPath:
+            path: /run/udev
+            type: Directory
+        - name: output
+          hostPath:
+            path: {{ .Values.outputPath }}
+            type: DirectoryOrCreate
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

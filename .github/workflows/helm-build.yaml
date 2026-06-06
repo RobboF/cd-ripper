@@ -1,0 +1,29 @@
+name: Build and push Helm chart
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  helm-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint chart
+        run: helm lint chart/cd-ripper
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | helm registry login registry-1.docker.io -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Package and push chart
+        if: github.event_name == 'push'
+        run: |
+          helm package chart/cd-ripper
+          helm push cd-ripper-*.tgz oci://registry-1.docker.io/robbof

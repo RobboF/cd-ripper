@@ -1,0 +1,18 @@
+image:
+  repository: robbof/cd-ripper
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Host block device for the CD drive.
+device: /dev/sr0
+
+# GID of the cdrom group on the host node (Fedora: 11, Debian/Ubuntu: 24).
+cdromGID: 11
+
+# Host path where ripped FLAC files are written.
+outputPath: /home/rob/Music
+
+# Pin to the node that has the CD drive.
+nodeSelector: {}
+tolerations: []
+affinity: {}
