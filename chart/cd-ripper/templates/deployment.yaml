@@ -47,9 +47,15 @@ spec:
             path: /run/udev
             type: Directory
         - name: output
+          {{- if .Values.nfs.enabled }}
+          nfs:
+            server: {{ .Values.nfs.server }}
+            path: {{ .Values.nfs.path }}
+          {{- else }}
           hostPath:
             path: {{ .Values.outputPath }}
             type: DirectoryOrCreate
+          {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

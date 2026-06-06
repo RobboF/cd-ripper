@@ -12,8 +12,14 @@ cdromGID: 11
 # Run the container as root with a privileged security context.
 privileged: false
 
-# Host path where ripped FLAC files are written.
+# Host path where ripped FLAC files are written (ignored when nfs.enabled is true).
 outputPath: /home/rob/Music
+
+# Use an NFS share as the output directory instead of a host path.
+nfs:
+  enabled: false
+  server: ""
+  path: ""
 
 # Pin to the node that has the CD drive.
 nodeSelector: {}
