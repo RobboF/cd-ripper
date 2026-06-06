@@ -26,4 +26,4 @@ USER 1000
 
 # pyudev reads disc events from the host udev socket.
 # Run with: docker run --device /dev/sr0 -v /run/udev:/run/udev <image>
-CMD ["python", "-m", "cd_ripper.main"]
+CMD ["python", "-u", "-m", "cd_ripper.main"]

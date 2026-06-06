@@ -22,6 +22,10 @@ jobs:
         if: github.event_name == 'push'
         run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | helm registry login registry-1.docker.io -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
+      - name: Stamp image tag
+        if: github.event_name == 'push'
+        run: sed -i "s/tag: latest/tag: ${{ github.sha }}/" chart/cd-ripper/values.yaml
+
       - name: Package and push chart
         if: github.event_name == 'push'
         run: |
