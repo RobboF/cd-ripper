@@ -24,7 +24,8 @@ jobs:
 
       - name: Stamp image tag
         if: github.event_name == 'push'
-        run: sed -i "s/tag: latest/tag: ${{ github.sha }}/" chart/cd-ripper/values.yaml
+        run: |
+          sed -i "s/tag: latest/tag: ${{ github.sha }}/" chart/cd-ripper/values.yaml
 
       - name: Package and push chart
         if: github.event_name == 'push'
