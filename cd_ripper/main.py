@@ -204,7 +204,7 @@ POLL_DEVICE = os.environ.get("CD_DEVICE", "/dev/sr0")
 POLL_INTERVAL = 5  # seconds
 
 
-def _udev_monitor_loop(ripping: threading.Event, device_override: str) -> None:
+def _udev_monitor_loop(ripping: threading.Lock, device_override: str) -> None:
     """Forward kernel block uevents to on_cd_inserted (requires hostNetwork: true)."""
     context = pyudev.Context()
     monitor = pyudev.Monitor.from_netlink(context)
@@ -224,57 +224,56 @@ def _udev_monitor_loop(ripping: threading.Event, device_override: str) -> None:
             continue
 
         target = node or device_override
+
+        # Always confirm via ioctl — udev events can be stale (e.g. queued while a
+        # previous rip was running and the disc has since been ejected).
+        if not _has_media(target):
+            print(f"[udev] CD event on {target} but ioctl reports no media — skipping.")
+            continue
         if has_media == "1":
-            print(f"[udev] CD event on {target} (ID_CDROM_MEDIA=1).")
+            print(f"[udev] CD event on {target} (ID_CDROM_MEDIA=1, confirmed via ioctl).")
         else:
             # ID_CDROM_MEDIA is not set by TalosOS udev when the block-layer probe
             # fails (audio CDs return "Illegal mode for this track" on READ(10)).
-            # Confirm via ioctl before proceeding.
-            if not _has_media(target):
-                print(f"[udev] CD event on {target} but ioctl reports no media — skipping.")
-                continue
             print(f"[udev] CD event on {target} (ID_CDROM_MEDIA not set, confirmed via ioctl).")
 
-        if ripping.is_set():
+        # acquire(blocking=False) is atomic: check-and-lock in one step, preventing
+        # the race condition where both threads pass an is_set() check simultaneously.
+        if not ripping.acquire(blocking=False):
             print("[udev] Rip already in progress — ignoring event.")
             continue
-        ripping.set()
         try:
             on_cd_inserted(target)
         finally:
-            ripping.clear()
+            ripping.release()
 
 
-def _poll_loop(ripping: threading.Event, device_node: str) -> None:
+def _poll_loop(ripping: threading.Lock, device_node: str) -> None:
     """Fallback: poll the drive directly so events missed by udev are still caught."""
     disc_was_present = False
-    udev_triggered = False
     print(f"[poll] Polling {device_node} every {POLL_INTERVAL}s as fallback.")
     while True:
         time.sleep(POLL_INTERVAL)
         present = _has_media(device_node)
         if present and not disc_was_present:
-            if ripping.is_set():
+            if not ripping.acquire(blocking=False):
                 # udev beat us to it
-                udev_triggered = True
+                print(f"[poll] Disc detected on {device_node} — rip already started by udev.")
             else:
                 print(f"[poll] Disc detected on {device_node} — udev did not fire, using poll fallback.")
-                udev_triggered = False
-                ripping.set()
                 try:
                     on_cd_inserted(device_node)
                 finally:
-                    ripping.clear()
-        elif not present and disc_was_present and not udev_triggered:
+                    ripping.release()
+        elif not present and disc_was_present:
             print(f"[poll] Disc removed from {device_node}.")
         disc_was_present = present
-        udev_triggered = False
 
 
 def main() -> None:
     check_tools()
 
-    ripping = threading.Event()
+    ripping = threading.Lock()
 
     print(f"Watching for CD/DVD insertion on {POLL_DEVICE}. Press Ctrl+C to stop.")
 
